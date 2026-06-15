@@ -85,6 +85,11 @@ model School {
   accentColor    String?
   backgroundColor String?
   textColor      String?
+  bankName        String?
+  bankAccountName String?
+  bankAccountNumber String?
+  bankIfscCode    String?
+  upiId           String?
   isActive      Boolean  @default(true)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt

@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import SubmitLeaveModal from "@/components/parent/submit-leave-modal";
 import { UserCheck, DollarSign, Calendar, CreditCard, Award, FileSpreadsheet } from "lucide-react";
 import PerformanceAnalytics from "@/components/student/performance-analytics";
+import ParentFeesClient from "@/components/parent/parent-fees-client";
 
 export const dynamic = "force-dynamic";
 
@@ -203,7 +204,7 @@ export default async function ParentDashboardPage({
         <div className="p-5 bg-card rounded-xl border border-border shadow-sm flex items-center justify-between">
           <div className="space-y-1">
             <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Pending Invoices Amount</p>
-            <p className="text-2xl font-bold tracking-tight text-amber-500">${pendingFees.toLocaleString()}</p>
+            <p className="text-2xl font-bold tracking-tight text-amber-500">₹{pendingFees.toLocaleString()}</p>
             <p className="text-[10px] text-muted-foreground">Next invoice due: July 1st</p>
           </div>
           <div className="p-3 rounded-lg bg-amber-500/10 text-amber-500">
@@ -238,52 +239,7 @@ export default async function ParentDashboardPage({
             <CreditCard className="h-4 w-4 text-violet-500" />
             <span>Billing & Invoices</span>
           </h3>
-          <div className="overflow-x-auto flex-1">
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="border-b border-border bg-secondary/30 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-                  <th className="px-4 py-2">Invoice Title</th>
-                  <th className="px-4 py-2">Type</th>
-                  <th className="px-4 py-2">Amount</th>
-                  <th className="px-4 py-2">Due Date</th>
-                  <th className="px-4 py-2 text-right">Payment Status</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border text-xs text-foreground">
-                {invoices.length === 0 ? (
-                  <tr>
-                    <td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">
-                      No invoices found for your child.
-                    </td>
-                  </tr>
-                ) : (
-                  invoices.map((inv) => (
-                    <tr key={inv.id} className="hover:bg-secondary/10">
-                      <td className="px-4 py-3 font-semibold text-foreground">{inv.title}</td>
-                      <td className="px-4 py-3 font-semibold text-muted-foreground uppercase text-[10px] font-mono">
-                        {inv.type}
-                      </td>
-                      <td className="px-4 py-3 font-bold font-mono text-foreground">${inv.amount}</td>
-                      <td className="px-4 py-3 text-muted-foreground">
-                        {inv.dueDate.toISOString().split("T")[0]}
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase border ${
-                          inv.status === "PAID"
-                            ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/20"
-                            : inv.status === "PENDING"
-                            ? "bg-amber-500/10 text-amber-500 border-amber-500/20"
-                            : "bg-red-500/10 text-red-500 border-red-500/20"
-                        }`}>
-                          {inv.status}
-                        </span>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
+          <ParentFeesClient invoices={invoices as any} school={school as any} />
         </div>
 
         {/* Leave Request Status logs (Right) */}

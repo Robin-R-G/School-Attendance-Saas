@@ -47,48 +47,6 @@ class _MainWebViewPageState extends State<MainWebViewPage> {
   @override
   void initState() {
     super.initState();
-    _loadSavedUrl();
-    _urlInputController.text = _currentUrl;
-  }
-
-  Future<void> _loadSavedUrl() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final savedUrl = prefs.getString('saved_school_url');
-      if (savedUrl != null && savedUrl.isNotEmpty) {
-        setState(() {
-          _currentUrl = savedUrl;
-          _urlInputController.text = savedUrl;
-        });
-        _controller.loadRequest(Uri.parse(savedUrl));
-      }
-    } catch (_) {
-      // SharedPreferences fails on some test setups, ignore
-    }
-  }
-
-  Future<void> _saveUrl(String url) async {
-    if (!url.startsWith('http://') && !url.startsWith('https://')) {
-      url = 'https://$url';
-    }
-    setState(() {
-      _currentUrl = url;
-      _urlInputController.text = url;
-      _isLoading = true;
-      _progress = 0;
-    });
-    
-    _controller.loadRequest(Uri.parse(url));
-
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('saved_school_url', url);
-    } catch (_) {}
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    // Initialize WebViewController
     _controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setBackgroundColor(const Color(0xFF0F172A))
@@ -113,8 +71,50 @@ class _MainWebViewPageState extends State<MainWebViewPage> {
             debugPrint('Web resource error: ${error.description}');
           },
         ),
-      )
-      ..loadRequest(Uri.parse(_currentUrl));
+      );
+    _loadSavedUrl();
+    _urlInputController.text = _currentUrl;
+  }
+
+  Future<void> _loadSavedUrl() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final savedUrl = prefs.getString('saved_school_url');
+      if (savedUrl != null && savedUrl.isNotEmpty) {
+        setState(() {
+          _currentUrl = savedUrl;
+          _urlInputController.text = savedUrl;
+        });
+        _controller.loadRequest(Uri.parse(savedUrl));
+      } else {
+        _controller.loadRequest(Uri.parse(_currentUrl));
+      }
+    } catch (_) {
+      _controller.loadRequest(Uri.parse(_currentUrl));
+    }
+  }
+
+  Future<void> _saveUrl(String url) async {
+    if (!url.startsWith('http://') && !url.startsWith('https://')) {
+      url = 'https://$url';
+    }
+    setState(() {
+      _currentUrl = url;
+      _urlInputController.text = url;
+      _isLoading = true;
+      _progress = 0;
+    });
+    
+    _controller.loadRequest(Uri.parse(url));
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('saved_school_url', url);
+    } catch (_) {}
+  }
+
+  @override
+  Widget build(BuildContext context) {
 
     return Scaffold(
       appBar: AppBar(

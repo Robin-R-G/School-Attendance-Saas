@@ -38,6 +38,29 @@ export default async function AdminFeesPage({
     orderBy: { createdAt: "desc" },
   });
 
+  const students = await db.student.findMany({
+    where: {
+      class: { schoolId: school.id },
+      isArchived: false,
+    },
+    select: {
+      id: true,
+      firstName: true,
+      lastName: true,
+      admissionNumber: true,
+      class: {
+        select: {
+          grade: { select: { name: true } },
+          section: { select: { name: true } },
+        },
+      },
+    },
+    orderBy: [
+      { firstName: "asc" },
+      { lastName: "asc" },
+    ],
+  });
+
   return (
     <div className="space-y-6">
       <div>
@@ -47,7 +70,11 @@ export default async function AdminFeesPage({
         </p>
       </div>
 
-      <FeesInvoicesClient invoices={invoices as any} school={school} />
+      <FeesInvoicesClient 
+        invoices={invoices as any} 
+        school={school} 
+        students={students as any} 
+      />
     </div>
   );
 }

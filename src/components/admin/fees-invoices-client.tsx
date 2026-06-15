@@ -1,7 +1,11 @@
 "use client";
 
-import { useState } from "react";
-import { X, Printer, Receipt, FileText, CheckCircle2, AlertCircle } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
+import { 
+  X, Printer, Receipt, FileText, CheckCircle2, AlertCircle, 
+  Plus, Search, Calendar, CreditCard, DollarSign, Loader2, ArrowRight 
+} from "lucide-react";
+import { useRouter } from "next/navigation";
 
 interface Payment {
   id: string;
@@ -21,6 +25,7 @@ interface Invoice {
   status: string;
   createdAt: Date | string;
   student: {
+    id: string;
     firstName: string;
     lastName: string;
     admissionNumber: string;
@@ -32,32 +37,340 @@ interface Invoice {
   payments: Payment[];
 }
 
+interface Student {
+  id: string;
+  firstName: string;
+  lastName: string;
+  admissionNumber: string;
+  class: {
+    grade: { name: string };
+    section: { name: string };
+  };
+}
+
 interface School {
+  code: string;
   name: string;
   logoUrl: string | null;
   address: string;
   email: string;
   phone: string;
+  bankName: string | null;
+  bankAccountName: string | null;
+  bankAccountNumber: string | null;
+  bankIfscCode: string | null;
+  upiId: string | null;
 }
 
 interface FeesInvoicesClientProps {
   invoices: Invoice[];
   school: School;
+  students: Student[];
 }
 
-export default function FeesInvoicesClient({ invoices, school }: FeesInvoicesClientProps) {
+export default function FeesInvoicesClient({ invoices, school, students }: FeesInvoicesClientProps) {
+  const router = useRouter();
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  // View States
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [typeFilter, setTypeFilter] = useState("all");
+
+  // Issue Invoice Dialog States
+  const [isIssueModalOpen, setIsIssueModalOpen] = useState(false);
+  const [issueLoading, setIssueLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  const [issueStudentId, setIssueStudentId] = useState("");
+  const [issueStudentName, setIssueStudentName] = useState("");
+  const [studentSearch, setStudentSearch] = useState("");
+  const [isStudentDropdownOpen, setIsStudentDropdownOpen] = useState(false);
+
+  const [issueType, setIssueType] = useState("TUITION");
+  const [issueTitle, setIssueTitle] = useState("");
+  const [issueAmount, setIssueAmount] = useState("");
+  const [issueDueDate, setIssueDueDate] = useState("");
+
+  // Record Payment Dialog States
+  const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
+  const [paymentLoading, setPaymentLoading] = useState(false);
+  const [paymentInvoice, setPaymentInvoice] = useState<Invoice | null>(null);
+  
+  const [paymentMethod, setPaymentMethod] = useState("CASH");
+  const [paymentAmount, setPaymentAmount] = useState("");
+  const [paymentReceiptNumber, setPaymentReceiptNumber] = useState("");
+  const [paymentTransactionId, setPaymentTransactionId] = useState("");
+  const [paymentDate, setPaymentDate] = useState("");
+
+  // School Payment Settings States
+  const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
+  const [settingsLoading, setSettingsLoading] = useState(false);
+  const [bankName, setBankName] = useState(school.bankName || "");
+  const [bankAccountName, setBankAccountName] = useState(school.bankAccountName || "");
+  const [bankAccountNumber, setBankAccountNumber] = useState(school.bankAccountNumber || "");
+  const [bankIfscCode, setBankIfscCode] = useState(school.bankIfscCode || "");
+  const [upiId, setUpiId] = useState(school.upiId || "");
+
+  // Update settings states if school prop changes
+  useEffect(() => {
+    setBankName(school.bankName || "");
+    setBankAccountName(school.bankAccountName || "");
+    setBankAccountNumber(school.bankAccountNumber || "");
+    setBankIfscCode(school.bankIfscCode || "");
+    setUpiId(school.upiId || "");
+  }, [school]);
+
+  // Close student dropdown when clicking outside
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsStudentDropdownOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   const handlePrint = () => {
     window.print();
   };
 
+  // Open invoice creation modal
+  const handleOpenIssueModal = () => {
+    setIssueStudentId("");
+    setIssueStudentName("");
+    setStudentSearch("");
+    setIssueType("TUITION");
+    setIssueTitle("");
+    setIssueAmount("");
+    const defaultDue = new Date();
+    defaultDue.setDate(defaultDue.getDate() + 30); // 30 days default
+    setIssueDueDate(defaultDue.toISOString().split("T")[0]);
+    setErrorMessage(null);
+    setIsIssueModalOpen(true);
+  };
+
+  // Open record payment modal
+  const handleOpenPaymentModal = (invoice: Invoice) => {
+    setPaymentInvoice(invoice);
+    setPaymentAmount(invoice.amount.toString());
+    setPaymentMethod("CASH");
+    setPaymentTransactionId("");
+    setErrorMessage(null);
+    
+    // Auto-generate a receipt number: REC-[YYYYMMDD]-[RANDOM]
+    const dateStr = new Date().toISOString().split("T")[0].replace(/-/g, "");
+    const rand = Math.floor(1000 + Math.random() * 9000);
+    setPaymentReceiptNumber(`REC-${dateStr}-${rand}`);
+    setPaymentDate(new Date().toISOString().split("T")[0]);
+    setIsPaymentModalOpen(true);
+  };
+
+  // Handle invoice submission
+  const handleIssueSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!issueStudentId || !issueType || !issueTitle || !issueAmount || !issueDueDate) {
+      setErrorMessage("Please fill out all required fields.");
+      return;
+    }
+
+    setIssueLoading(true);
+    setErrorMessage(null);
+
+    const payload = {
+      studentId: issueStudentId,
+      type: issueType,
+      title: issueTitle,
+      amount: parseFloat(issueAmount),
+      dueDate: issueDueDate,
+    };
+
+    try {
+      const res = await fetch(`/api/schools/${school.code}/fees`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setIsIssueModalOpen(false);
+        router.refresh();
+      } else {
+        setErrorMessage(data.message || "Failed to create fee invoice.");
+      }
+    } catch (err) {
+      setErrorMessage("An unexpected network error occurred.");
+    } finally {
+      setIssueLoading(false);
+    }
+  };
+
+  // Handle payment submission
+  const handlePaymentSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!paymentInvoice || !paymentAmount || !paymentReceiptNumber || !paymentDate) {
+      setErrorMessage("Please fill out all required fields.");
+      return;
+    }
+
+    setPaymentLoading(true);
+    setErrorMessage(null);
+
+    const payload = {
+      amount: parseFloat(paymentAmount),
+      paymentMethod,
+      transactionId: paymentTransactionId || null,
+      receiptNumber: paymentReceiptNumber,
+      paidAt: paymentDate,
+    };
+
+    try {
+      const res = await fetch(`/api/schools/${school.code}/fees/${paymentInvoice.id}/payments`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setIsPaymentModalOpen(false);
+        router.refresh();
+      } else {
+        setErrorMessage(data.message || "Failed to record payment.");
+      }
+    } catch (err) {
+      setErrorMessage("An unexpected network error occurred.");
+    } finally {
+      setPaymentLoading(false);
+    }
+  };
+
+  // Handle school payment settings submission
+  const handleSettingsSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSettingsLoading(true);
+    setErrorMessage(null);
+
+    const payload = {
+      bankName: bankName || null,
+      bankAccountName: bankAccountName || null,
+      bankAccountNumber: bankAccountNumber || null,
+      bankIfscCode: bankIfscCode || null,
+      upiId: upiId || null,
+    };
+
+    try {
+      const res = await fetch(`/api/schools/${school.code}/payment-settings`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setIsSettingsModalOpen(false);
+        router.refresh();
+      } else {
+        setErrorMessage(data.message || "Failed to update payment settings.");
+      }
+    } catch (err) {
+      setErrorMessage("An unexpected network error occurred.");
+    } finally {
+      setSettingsLoading(false);
+    }
+  };
+
+  // Filter students based on search inside the dropdown
+  const filteredDropdownStudents = students.filter(st => {
+    const term = studentSearch.toLowerCase();
+    return st.firstName.toLowerCase().includes(term) ||
+      st.lastName.toLowerCase().includes(term) ||
+      st.admissionNumber.toLowerCase().includes(term);
+  });
+
+  // Filter main invoices list
+  const filteredInvoices = invoices.filter((inv) => {
+    const fullName = `${inv.student.firstName} ${inv.student.lastName}`.toLowerCase();
+    const searchMatch = fullName.includes(searchQuery.toLowerCase()) ||
+      inv.student.admissionNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      inv.title.toLowerCase().includes(searchQuery.toLowerCase());
+
+    const statusMatch = statusFilter === "all" || inv.status === statusFilter;
+    const typeMatch = typeFilter === "all" || inv.type === typeFilter;
+
+    return searchMatch && statusMatch && typeMatch;
+  });
+
   return (
     <div className="space-y-6">
+      {/* Search and Filters Bar */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 print:hidden">
+        <div className="flex flex-col sm:flex-row items-center gap-3 w-full md:max-w-2xl">
+          {/* Keyword Search */}
+          <div className="relative w-full sm:max-w-xs">
+            <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+            <input
+              type="text"
+              placeholder="Search student or description..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-9 pr-4 py-2 rounded-lg border border-input bg-card text-xs focus:outline-none focus:ring-1 focus:ring-ring"
+            />
+          </div>
+
+          {/* Status Filter */}
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            className="w-full sm:w-40 px-3 py-2 rounded-lg border border-input bg-card text-xs focus:outline-none focus:ring-1 focus:ring-ring"
+          >
+            <option value="all">All Statuses</option>
+            <option value="PENDING">Pending</option>
+            <option value="PAID">Paid</option>
+            <option value="OVERDUE">Overdue</option>
+          </select>
+
+          {/* Fee Type Filter */}
+          <select
+            value={typeFilter}
+            onChange={(e) => setTypeFilter(e.target.value)}
+            className="w-full sm:w-44 px-3 py-2 rounded-lg border border-input bg-card text-xs focus:outline-none focus:ring-1 focus:ring-ring"
+          >
+            <option value="all">All Fee Types</option>
+            <option value="TUITION">Tuition Fee</option>
+            <option value="TRANSPORT">Bus/Transport Fee</option>
+            <option value="HOSTEL">Hostel Fee</option>
+            <option value="EXAMINATION">Exam Fee</option>
+            <option value="OTHER">Other Fees</option>
+          </select>
+        </div>
+
+        <div className="flex items-center gap-2 self-start md:self-auto">
+          <button
+            onClick={() => {
+              setErrorMessage(null);
+              setIsSettingsModalOpen(true);
+            }}
+            className="flex items-center justify-center gap-1.5 py-2 px-3.5 rounded-lg border border-border bg-card hover:bg-secondary text-foreground font-semibold text-xs transition duration-150 active:scale-[0.98] cursor-pointer shadow-sm"
+          >
+            <CreditCard className="h-4 w-4 text-violet-500" />
+            <span>Setup Payments</span>
+          </button>
+          
+          <button
+            onClick={handleOpenIssueModal}
+            className="flex items-center justify-center gap-2 py-2 px-4 rounded-lg bg-violet-600 hover:bg-violet-700 text-white font-semibold text-xs transition duration-150 active:scale-[0.98] cursor-pointer shadow-md"
+          >
+            <Plus className="h-4 w-4" />
+            <span>Issue Invoice</span>
+          </button>
+        </div>
+      </div>
+
       {/* Invoices List Table */}
       <div className="bg-card rounded-xl border border-border overflow-hidden shadow-sm print:hidden">
         <div className="px-6 py-4 border-b border-border">
-          <h3 className="font-bold text-sm text-foreground">Invoices Register ({invoices.length})</h3>
+          <h3 className="font-bold text-sm text-foreground">Invoices Register ({filteredInvoices.length})</h3>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
@@ -74,14 +387,14 @@ export default function FeesInvoicesClient({ invoices, school }: FeesInvoicesCli
               </tr>
             </thead>
             <tbody className="divide-y divide-border text-xs text-foreground">
-              {invoices.length === 0 ? (
+              {filteredInvoices.length === 0 ? (
                 <tr>
                   <td colSpan={8} className="px-6 py-10 text-center text-muted-foreground">
-                    No billing invoices generated yet.
+                    No billing invoices matching filters.
                   </td>
                 </tr>
               ) : (
-                invoices.map((inv) => (
+                filteredInvoices.map((inv) => (
                   <tr key={inv.id} className="hover:bg-secondary/10 transition-colors">
                     <td className="px-6 py-4 font-bold text-foreground">
                       {inv.student.firstName} {inv.student.lastName}
@@ -96,7 +409,7 @@ export default function FeesInvoicesClient({ invoices, school }: FeesInvoicesCli
                       {inv.type}
                     </td>
                     <td className="px-6 py-4 font-bold font-mono text-foreground">
-                      ${inv.amount.toLocaleString()}
+                      ₹{inv.amount.toLocaleString()}
                     </td>
                     <td className="px-6 py-4 font-mono text-muted-foreground">
                       {typeof inv.dueDate === "string"
@@ -120,13 +433,24 @@ export default function FeesInvoicesClient({ invoices, school }: FeesInvoicesCli
                       </span>
                     </td>
                     <td className="px-6 py-4 text-right">
-                      <button
-                        onClick={() => setSelectedInvoice(inv)}
-                        className="py-1 px-3 rounded-lg border border-border bg-background hover:bg-secondary text-[11px] font-semibold transition cursor-pointer text-foreground flex items-center gap-1.5 ml-auto"
-                      >
-                        <Receipt className="h-3.5 w-3.5 text-violet-500" />
-                        <span>View Receipt</span>
-                      </button>
+                      <div className="flex items-center justify-end gap-2">
+                        {inv.status !== "PAID" && (
+                          <button
+                            onClick={() => handleOpenPaymentModal(inv)}
+                            className="py-1 px-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-semibold transition cursor-pointer flex items-center gap-1 shadow-sm"
+                          >
+                            <CreditCard className="h-3.5 w-3.5" />
+                            <span>Pay</span>
+                          </button>
+                        )}
+                        <button
+                          onClick={() => setSelectedInvoice(inv)}
+                          className="py-1 px-2.5 rounded-lg border border-border bg-background hover:bg-secondary text-[11px] font-semibold transition cursor-pointer text-foreground flex items-center gap-1"
+                        >
+                          <Receipt className="h-3.5 w-3.5 text-violet-500" />
+                          <span>Receipt</span>
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))
@@ -135,6 +459,473 @@ export default function FeesInvoicesClient({ invoices, school }: FeesInvoicesCli
           </table>
         </div>
       </div>
+
+      {/* SETUP PAYMENT SETTINGS MODAL */}
+      {isSettingsModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-card border border-border w-full max-w-md rounded-xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-150">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-border bg-secondary/10">
+              <h3 className="font-bold text-foreground flex items-center gap-2">
+                <CreditCard className="h-4.5 w-4.5 text-violet-500" />
+                <span>Configure School Payment Details</span>
+              </h3>
+              <button
+                onClick={() => setIsSettingsModalOpen(false)}
+                className="p-1 rounded-lg hover:bg-secondary text-muted-foreground hover:text-foreground cursor-pointer"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <form onSubmit={handleSettingsSubmit} className="p-6 space-y-4">
+              {errorMessage && (
+                <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/20 text-destructive text-xs font-semibold">
+                  {errorMessage}
+                </div>
+              )}
+
+              <p className="text-muted-foreground text-xs leading-relaxed border-b border-border pb-3">
+                Configure your school's bank account details and UPI address (VPA) so parents and students can make direct transfers.
+              </p>
+
+              {/* Bank Details */}
+              <div className="space-y-3 pt-1">
+                <h4 className="text-[10px] font-bold uppercase tracking-wider text-violet-500 font-mono">1. Bank Account Information</h4>
+                
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1 col-span-2">
+                    <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Account Holder Name</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Grand Academy School A/C"
+                      value={bankAccountName}
+                      onChange={(e) => setBankAccountName(e.target.value)}
+                      className="w-full px-3 py-2 rounded-lg border border-input bg-background text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                      disabled={settingsLoading}
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Bank Name</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. HDFC Bank, SBI"
+                      value={bankName}
+                      onChange={(e) => setBankName(e.target.value)}
+                      className="w-full px-3 py-2 rounded-lg border border-input bg-background text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                      disabled={settingsLoading}
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">IFSC Code</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. HDFC0001234"
+                      value={bankIfscCode}
+                      onChange={(e) => setBankIfscCode(e.target.value)}
+                      className="w-full px-3 py-2 rounded-lg border border-input bg-background text-sm focus:outline-none focus:ring-1 focus:ring-ring font-mono uppercase"
+                      disabled={settingsLoading}
+                    />
+                  </div>
+
+                  <div className="space-y-1 col-span-2">
+                    <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Account Number</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. 50100123456789"
+                      value={bankAccountNumber}
+                      onChange={(e) => setBankAccountNumber(e.target.value)}
+                      className="w-full px-3 py-2 rounded-lg border border-input bg-background text-sm focus:outline-none focus:ring-1 focus:ring-ring font-mono"
+                      disabled={settingsLoading}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* UPI VPA Details */}
+              <div className="space-y-3 pt-3 border-t border-border border-dashed">
+                <h4 className="text-[10px] font-bold uppercase tracking-wider text-violet-500 font-mono">2. UPI Payment gateway (VPA)</h4>
+                
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">UPI ID / VPA</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. grandacademy@okaxis"
+                    value={upiId}
+                    onChange={(e) => setUpiId(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg border border-input bg-background text-sm focus:outline-none focus:ring-1 focus:ring-ring font-mono"
+                    disabled={settingsLoading}
+                  />
+                  <p className="text-[9px] text-muted-foreground">Required to dynamically generate payment QR codes for parents.</p>
+                </div>
+              </div>
+
+              {/* Modal Footer */}
+              <div className="flex justify-end gap-3 pt-4 border-t border-border">
+                <button
+                  type="button"
+                  onClick={() => setIsSettingsModalOpen(false)}
+                  className="py-2 px-4 rounded-lg border border-border hover:bg-secondary text-foreground text-xs font-semibold cursor-pointer"
+                  disabled={settingsLoading}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="py-2 px-4 rounded-lg bg-violet-600 hover:bg-violet-700 text-white font-semibold text-xs transition-all flex items-center gap-1.5 cursor-pointer shadow-md"
+                  disabled={settingsLoading}
+                >
+                  {settingsLoading ? (
+                    <>
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      <span>Saving...</span>
+                    </>
+                  ) : (
+                    <span>Save Settings</span>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ISSUE INVOICE DIALOG MODAL */}
+      {isIssueModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-card border border-border w-full max-w-md rounded-xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-150">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-border bg-secondary/10">
+              <h3 className="font-bold text-foreground flex items-center gap-2">
+                <FileText className="h-4.5 w-4.5 text-violet-500" />
+                <span>Issue Fee Invoice</span>
+              </h3>
+              <button
+                onClick={() => setIsIssueModalOpen(false)}
+                className="p-1 rounded-lg hover:bg-secondary text-muted-foreground hover:text-foreground cursor-pointer"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <form onSubmit={handleIssueSubmit} className="p-6 space-y-4">
+              {errorMessage && (
+                <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/20 text-destructive text-xs font-semibold">
+                  {errorMessage}
+                </div>
+              )}
+
+              {/* Searchable Student Dropdown Select */}
+              <div className="space-y-1 relative" ref={dropdownRef}>
+                <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Select Student *</label>
+                <div className="relative">
+                  <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                  <input
+                    type="text"
+                    placeholder="Search student by name or admin no..."
+                    value={issueStudentName || studentSearch}
+                    onChange={(e) => {
+                      setStudentSearch(e.target.value);
+                      if (issueStudentName) {
+                        setIssueStudentName("");
+                        setIssueStudentId("");
+                      }
+                      setIsStudentDropdownOpen(true);
+                    }}
+                    onFocus={() => setIsStudentDropdownOpen(true)}
+                    className="w-full pl-9 pr-4 py-2 rounded-lg border border-input bg-background text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                    disabled={issueLoading}
+                  />
+                  {issueStudentId && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIssueStudentId("");
+                        setIssueStudentName("");
+                        setStudentSearch("");
+                      }}
+                      className="absolute right-3 top-2.5 text-muted-foreground hover:text-foreground"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  )}
+                </div>
+
+                {isStudentDropdownOpen && (
+                  <div className="absolute z-10 left-0 right-0 mt-1 max-h-52 overflow-y-auto bg-card border border-border rounded-lg shadow-xl divide-y divide-border text-xs">
+                    {filteredDropdownStudents.length === 0 ? (
+                      <div className="p-3 text-center text-muted-foreground">No students found.</div>
+                    ) : (
+                      filteredDropdownStudents.map((st) => (
+                        <div
+                          key={st.id}
+                          onClick={() => {
+                            setIssueStudentId(st.id);
+                            setIssueStudentName(`${st.firstName} ${st.lastName}`);
+                            setStudentSearch("");
+                            setIsStudentDropdownOpen(false);
+                          }}
+                          className="p-2.5 hover:bg-secondary/40 cursor-pointer flex justify-between items-center text-foreground"
+                        >
+                          <div>
+                            <span className="font-bold">{st.firstName} {st.lastName}</span>
+                            <span className="text-[10px] text-muted-foreground block">
+                              Class: {st.class.grade.name} - {st.class.section.name}
+                            </span>
+                          </div>
+                          <span className="font-mono text-[10px] text-muted-foreground bg-secondary/80 px-1.5 py-0.5 rounded border border-border">
+                            {st.admissionNumber}
+                          </span>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Fee Category & Amount */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Category *</label>
+                  <select
+                    value={issueType}
+                    onChange={(e) => setIssueType(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg border border-input bg-background text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                    disabled={issueLoading}
+                  >
+                    <option value="TUITION">Tuition Fee</option>
+                    <option value="TRANSPORT">Bus/Transport</option>
+                    <option value="HOSTEL">Hostel Fee</option>
+                    <option value="EXAMINATION">Exam Fee</option>
+                    <option value="OTHER">Other / Custom</option>
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Amount (₹) *</label>
+                  <div className="relative">
+                    <DollarSign className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0.01"
+                      placeholder="0.00"
+                      value={issueAmount}
+                      onChange={(e) => setIssueAmount(e.target.value)}
+                      className="w-full pl-8 pr-4 py-2 rounded-lg border border-input bg-background text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                      disabled={issueLoading}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Invoice Title */}
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Invoice Description/Title *</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Bus fee - Quarter 2, PTA Fee"
+                  value={issueTitle}
+                  onChange={(e) => setIssueTitle(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg border border-input bg-background text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                  disabled={issueLoading}
+                />
+              </div>
+
+              {/* Due Date */}
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Due Date *</label>
+                <div className="relative">
+                  <Calendar className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                  <input
+                    type="date"
+                    value={issueDueDate}
+                    onChange={(e) => setIssueDueDate(e.target.value)}
+                    className="w-full pl-9 pr-4 py-2 rounded-lg border border-input bg-background text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                    disabled={issueLoading}
+                  />
+                </div>
+              </div>
+
+              {/* Modal Footer */}
+              <div className="flex justify-end gap-3 pt-4 border-t border-border">
+                <button
+                  type="button"
+                  onClick={() => setIsIssueModalOpen(false)}
+                  className="py-2 px-4 rounded-lg border border-border hover:bg-secondary text-foreground text-xs font-semibold cursor-pointer"
+                  disabled={issueLoading}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="py-2 px-4 rounded-lg bg-violet-600 hover:bg-violet-700 text-white font-semibold text-xs transition-all flex items-center gap-1.5 cursor-pointer shadow-md"
+                  disabled={issueLoading}
+                >
+                  {issueLoading ? (
+                    <>
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      <span>Issuing...</span>
+                    </>
+                  ) : (
+                    <span>Create Invoice</span>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* RECORD PAYMENT DIALOG MODAL */}
+      {isPaymentModalOpen && paymentInvoice && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-card border border-border w-full max-w-md rounded-xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-150">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-border bg-secondary/10">
+              <h3 className="font-bold text-foreground flex items-center gap-2">
+                <CreditCard className="h-4.5 w-4.5 text-emerald-500" />
+                <span>Record Invoice Payment</span>
+              </h3>
+              <button
+                onClick={() => setIsPaymentModalOpen(false)}
+                className="p-1 rounded-lg hover:bg-secondary text-muted-foreground hover:text-foreground cursor-pointer"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <form onSubmit={handlePaymentSubmit} className="p-6 space-y-4">
+              {errorMessage && (
+                <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/20 text-destructive text-xs font-semibold">
+                  {errorMessage}
+                </div>
+              )}
+
+              {/* Invoice Summary Info Card */}
+              <div className="p-4 bg-secondary/20 border border-border rounded-xl text-xs space-y-2">
+                <div className="flex justify-between font-bold text-foreground">
+                  <span>Student Name:</span>
+                  <span>{paymentInvoice.student.firstName} {paymentInvoice.student.lastName}</span>
+                </div>
+                <div className="flex justify-between text-muted-foreground">
+                  <span>Particulars:</span>
+                  <span>{paymentInvoice.title} ({paymentInvoice.type})</span>
+                </div>
+                <div className="flex justify-between font-bold text-lg pt-1 border-t border-border border-dashed text-foreground">
+                  <span>Balance Due:</span>
+                  <span className="text-emerald-500">₹{paymentInvoice.amount.toLocaleString()}.00</span>
+                </div>
+              </div>
+
+              {/* Payment Method & Amount */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Payment Method *</label>
+                  <select
+                    value={paymentMethod}
+                    onChange={(e) => setPaymentMethod(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg border border-input bg-background text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                    disabled={paymentLoading}
+                  >
+                    <option value="CASH">Cash Payment</option>
+                    <option value="UPI">UPI Transfer</option>
+                    <option value="CARD">Debit/Credit Card</option>
+                    <option value="BANK_TRANSFER">Bank Transfer</option>
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Amount Paid (₹) *</label>
+                  <div className="relative">
+                    <DollarSign className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={paymentAmount}
+                      onChange={(e) => setPaymentAmount(e.target.value)}
+                      className="w-full pl-8 pr-4 py-2 rounded-lg border border-input bg-background text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                      disabled={paymentLoading}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Receipt Number */}
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Receipt Number *</label>
+                <input
+                  type="text"
+                  placeholder="Receipt ID"
+                  value={paymentReceiptNumber}
+                  onChange={(e) => setPaymentReceiptNumber(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg border border-input bg-background text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                  disabled={paymentLoading}
+                />
+              </div>
+
+              {/* Transaction ID */}
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Transaction / Reference ID (Optional)</label>
+                <input
+                  type="text"
+                  placeholder="e.g. UPI Ref, Bank Ref, Card Slip ID"
+                  value={paymentTransactionId}
+                  onChange={(e) => setPaymentTransactionId(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg border border-input bg-background text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                  disabled={paymentLoading}
+                />
+              </div>
+
+              {/* Payment Date */}
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Date of Payment *</label>
+                <div className="relative">
+                  <Calendar className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                  <input
+                    type="date"
+                    value={paymentDate}
+                    onChange={(e) => setPaymentDate(e.target.value)}
+                    className="w-full pl-9 pr-4 py-2 rounded-lg border border-input bg-background text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                    disabled={paymentLoading}
+                  />
+                </div>
+              </div>
+
+              {/* Modal Footer */}
+              <div className="flex justify-end gap-3 pt-4 border-t border-border">
+                <button
+                  type="button"
+                  onClick={() => setIsPaymentModalOpen(false)}
+                  className="py-2 px-4 rounded-lg border border-border hover:bg-secondary text-foreground text-xs font-semibold cursor-pointer"
+                  disabled={paymentLoading}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="py-2 px-4 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs transition-all flex items-center gap-1.5 cursor-pointer shadow-md"
+                  disabled={paymentLoading}
+                >
+                  {paymentLoading ? (
+                    <>
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      <span>Recording...</span>
+                    </>
+                  ) : (
+                    <span>Record Payment</span>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Invoice Receipt Modal Overlay */}
       {selectedInvoice && (
@@ -149,7 +940,7 @@ export default function FeesInvoicesClient({ invoices, school }: FeesInvoicesCli
               <div className="flex items-center gap-2">
                 <button
                   onClick={handlePrint}
-                  className="flex items-center gap-1.5 py-1.5 px-3 rounded-lg bg-primary text-primary-foreground font-semibold text-xs hover:opacity-90 active:scale-[0.98] transition cursor-pointer"
+                  className="flex items-center gap-1.5 py-1.5 px-3 rounded-lg bg-violet-600 text-white font-semibold text-xs hover:bg-violet-700 active:scale-[0.98] transition cursor-pointer"
                 >
                   <Printer className="h-3.5 w-3.5" />
                   <span>Print Receipt</span>
@@ -244,14 +1035,14 @@ export default function FeesInvoicesClient({ invoices, school }: FeesInvoicesCli
                           {selectedInvoice.type}
                         </td>
                         <td className="px-6 py-4 text-right font-bold font-mono text-foreground pr-8">
-                          ${selectedInvoice.amount.toLocaleString()}.00
+                          ₹{selectedInvoice.amount.toLocaleString()}.00
                         </td>
                       </tr>
                       {/* Totals */}
                       <tr className="bg-secondary/10 font-bold border-t border-border print:bg-transparent print:border-black">
                         <td colSpan={2} className="px-6 py-4 text-right text-muted-foreground uppercase text-[10px]">Total Amount Billed</td>
                         <td className="px-6 py-4 text-right font-black font-mono text-foreground pr-8 text-sm">
-                          ${selectedInvoice.amount.toLocaleString()}.00
+                          ₹{selectedInvoice.amount.toLocaleString()}.00
                         </td>
                       </tr>
                     </tbody>
