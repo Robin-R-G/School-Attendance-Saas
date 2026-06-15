@@ -1,16 +1,26 @@
 import { PrismaClient } from "../generated/prisma/client";
 import { PrismaLibSql } from "@prisma/adapter-libsql";
-
-const globalForPrisma = globalThis as unknown as { prisma: PrismaClient | undefined };
+import { PrismaD1 } from "@prisma/adapter-d1";
 
 let prismaInstance: PrismaClient;
 
-if (process.env.NODE_ENV === "production") {
-  const adapter = new PrismaLibSql({
-    url: process.env.DATABASE_URL || "file:dev.db",
-  });
+let d1Database: any = null;
+if (process.env.CF_PAGES === "1" || process.env.NODE_ENV === "production") {
+  try {
+    const { getRequestContext } = require("@cloudflare/next-on-pages");
+    d1Database = getRequestContext().env.DB;
+  } catch (e) {
+    d1Database = (process.env as any).DB;
+  }
+}
+
+if (d1Database) {
+  // Cloudflare D1 serverless database adapter used at runtime
+  const adapter = new PrismaD1(d1Database);
   prismaInstance = new PrismaClient({ adapter });
 } else {
+  // Local file-based LibSQL adapter used locally or at build time
+  const globalForPrisma = globalThis as unknown as { prisma: PrismaClient | undefined };
   if (!globalForPrisma.prisma) {
     const adapter = new PrismaLibSql({
       url: "file:dev.db",
