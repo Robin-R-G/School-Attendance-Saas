@@ -7,7 +7,8 @@ let prismaInstance: PrismaClient;
 let d1Database: any = null;
 if (process.env.CF_PAGES === "1" || process.env.NODE_ENV === "production") {
   try {
-    const { getRequestContext } = require("@cloudflare/next-on-pages");
+    const cfPagesModuleName = "@cloudflare/next-on-pages";
+    const { getRequestContext } = require(cfPagesModuleName);
     d1Database = getRequestContext().env.DB;
   } catch (e) {
     d1Database = (process.env as any).DB;
