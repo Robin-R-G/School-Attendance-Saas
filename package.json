@@ -4,10 +4,10 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "prisma generate && next build",
     "start": "next start",
     "lint": "eslint",
-    "pages:build": "npx @cloudflare/next-on-pages"
+    "pages:build": "prisma generate && npx @cloudflare/next-on-pages"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.4.0",
