@@ -1,9 +1,7 @@
 import { db } from "@/lib/db";
 import { apiResponse, apiError } from "@/lib/api-helper";
 import { auth } from "@/auth";
-import { FeeType } from "@/generated/prisma/client";
-
-export const runtime = "edge";
+import { FeeType } from "@/generated/prisma/enums";
 
 export async function POST(
   request: Request,

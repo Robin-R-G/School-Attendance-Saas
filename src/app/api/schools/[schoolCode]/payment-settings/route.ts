@@ -2,7 +2,6 @@ import { db } from "@/lib/db";
 import { apiResponse, apiError } from "@/lib/api-helper";
 import { auth } from "@/auth";
 
-export const runtime = "edge";
 
 export async function PATCH(
   request: Request,
