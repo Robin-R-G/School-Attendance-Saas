@@ -5,7 +5,10 @@ import { PrismaD1 } from "@prisma/adapter-d1";
 let prismaInstance: PrismaClient;
 
 let d1Database: any = null;
-if (process.env.CF_PAGES === "1" || process.env.NODE_ENV === "production") {
+try {
+  const { getCloudflareContext } = require("@opennextjs/cloudflare");
+  d1Database = getCloudflareContext().env.DB;
+} catch (e) {
   d1Database = (process.env as any).DB;
 }
 
